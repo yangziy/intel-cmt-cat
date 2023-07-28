@@ -77,7 +77,7 @@ def get_supported_events():
     events = [get_event_name(event.type) for event in mon_cap.events]
 
     # Filter out perf events
-    events = list(filter(lambda event: 'perf' not in event, events))
+    events = list(filter(lambda event: event is not None and 'perf' not in event, events))
 
     return events
 
