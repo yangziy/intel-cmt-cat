@@ -116,6 +116,7 @@ class CPqosMonitor(ctypes.Structure):
     "pqos_monitor structure"
     # pylint: disable=too-few-public-methods
 
+    # lib/pqos.h
     PQOS_MON_EVENT_L3_OCCUP = 1
     PQOS_MON_EVENT_LMEM_BW = 2
     PQOS_MON_EVENT_TMEM_BW = 4
@@ -124,6 +125,11 @@ class CPqosMonitor(ctypes.Structure):
     RESERVED2 = 0x2000
     PQOS_PERF_EVENT_LLC_MISS = 0x4000
     PQOS_PERF_EVENT_IPC = 0x8000
+    PQOS_PERF_EVENT_LLC_REF = 0x10000
+    PQOS_PERF_EVENT_LLC_MISS_PCIE_READ = 0x100000  # DDIO LLC read misses
+    PQOS_PERF_EVENT_LLC_MISS_PCIE_WRITE = 0x200000 # DDIO LLC write misses
+    PQOS_PERF_EVENT_LLC_REF_PCIE_READ = 0x400000   # DDIO LLC read references
+    PQOS_PERF_EVENT_LLC_REF_PCIE_WRITE = 0x800000  # DDIO LLC write references */
 
     _fields_ = [
         ('type', ctypes.c_int),
