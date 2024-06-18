@@ -1150,8 +1150,8 @@ main(int argc, char **argv)
                 return EXIT_FAILURE;
         }
 
-        if (cpu_cache_size(3, &cache_size) == 0)
-                memchunk_size = (cache_size / PAGE_SIZE + 1) * PAGE_SIZE * 2;
+        // if (cpu_cache_size(3, &cache_size) == 0)
+        //         memchunk_size = (cache_size / PAGE_SIZE + 1) * PAGE_SIZE * 2;
         features = cpu_feature_detect();
 
         switch (type) {
