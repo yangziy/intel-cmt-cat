@@ -1059,6 +1059,7 @@ main(int argc, char **argv)
         struct option options[] = {
             {"bandwidth",       required_argument, 0, 'b'},
             {"cpu",             required_argument, 0, 'c'},
+            {"buffer-size",   required_argument, 0, 's'},
             {"prefetch-t0",     no_argument, 0, CL_TYPE_PREFETCH_T0},
             {"prefetch-t1",     no_argument, 0, CL_TYPE_PREFETCH_T1},
             {"prefetch-t2",     no_argument, 0, CL_TYPE_PREFETCH_T2},
@@ -1091,8 +1092,9 @@ main(int argc, char **argv)
         /* clang-format on */
 
         /* Process command line arguments */
-        while ((cmd = getopt_long_only(argc, argv, "b:c:", options,
+        while ((cmd = getopt_long_only(argc, argv, "b:c:s:", options,
                                        &option_index)) != -1) {
+                char *str_end = NULL;
 
                 switch (cmd) {
                 case 'c':
@@ -1108,6 +1110,13 @@ main(int argc, char **argv)
                                 printf("Invalid B/W specified!\n");
                                 return EXIT_FAILURE;
                         }
+                        break;
+                case 's':
+                        errno = 0;
+                        memchunk_size = strtoul(optarg, &str_end, 10);
+                        if (errno != 0 || !(*optarg != '\0' && *str_end == '\0'))
+                                return -EINVAL;
+                        printf("memchunk_size=%lu\n", memchunk_size);
                         break;
                 case CL_TYPE_PREFETCH_T0:
                 case CL_TYPE_PREFETCH_T1:
