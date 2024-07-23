@@ -44,6 +44,8 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <sys/mman.h>
+#include <linux/mman.h>
 
 #ifdef __linux__
 #include <cpuid.h>
@@ -414,9 +416,14 @@ malloc_and_init_memory(size_t s)
         void *p = NULL;
         int ret;
 
-        ret = posix_memalign(&p, PAGE_SIZE, s - s % PAGE_SIZE);
+        // ret = posix_memalign(&p, PAGE_SIZE, s - s % PAGE_SIZE);
+        p = (char *)mmap(/*addr*/ 0, /*len*/ s - s % PAGE_SIZE,
+                        /*prot*/ PROT_READ | PROT_WRITE,
+                        /*flags*/ MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_1GB, /*fd*/ 0,
+                        /*offset*/ 0);
 
-        if (ret != 0 || p == NULL) {
+
+        if (p == NULL) {
                 printf("ERROR: Failed to allocate %lu bytes\n",
                        (unsigned long)(s - s % PAGE_SIZE));
                 stop_loop = 1;
