@@ -67,6 +67,7 @@
 
 #define CL_SIZE (64LLU)
 #define CHUNKS  (256LLU)
+#define NUM_SETS (32768LLU)
 
 #ifdef DEBUG
 #include <assert.h>
@@ -136,9 +137,13 @@ static struct cpuid_out cpuid_7_0; /* leaf 7, sub-leaf 0 */
  */
 
 static int stop_loop = 0;
-static void *memchunk = NULL;
-static unsigned memchunk_offset = 0;
-static size_t memchunk_size = PAGE_SIZE * 128 * 1024;
+static void *memchunk1 = NULL;
+static void *memchunk2 = NULL;
+static unsigned memchunk_offset1 = CL_SIZE;
+static unsigned memchunk_offset2 = 0;
+static size_t memchunk_size1 = PAGE_SIZE * 128 * 1024;
+static size_t memchunk_size2 = 1024 * 1024 * 1024;
+static unsigned miss_ratio = 0;
 
 /**
  * UTILS
@@ -779,13 +784,13 @@ cl_read(void *p)
         register uint64_t v = 0;
 #ifdef __x86_64__
         asm volatile("movq (%1), %0\n\t"
-                     "movq 8(%1), %0\n\t"
-                     "movq 16(%1), %0\n\t"
-                     "movq 24(%1), %0\n\t"
-                     "movq 32(%1), %0\n\t"
-                     "movq 40(%1), %0\n\t"
-                     "movq 48(%1), %0\n\t"
-                     "movq 56(%1), %0\n\t"
+                //      "movq 8(%1), %0\n\t"
+                //      "movq 16(%1), %0\n\t"
+                //      "movq 24(%1), %0\n\t"
+                //      "movq 32(%1), %0\n\t"
+                //      "movq 40(%1), %0\n\t"
+                //      "movq 48(%1), %0\n\t"
+                //      "movq 56(%1), %0\n\t"
                      :
                      : "r"(v), "r"(p)
                      : "memory");
@@ -840,11 +845,20 @@ ALWAYS_INLINE void
 mem_execute(const unsigned bw, const enum cl_type type)
 {
         uint64_t val = get_value();
-        char *cp = (char *)memchunk;
         unsigned i;
 
         for (i = 0; i < bw; i++) {
-                char *ptr = cp + memchunk_offset;
+                char *ptr;
+                // if (i % 450 != 0) {
+                if (i % 100 >= miss_ratio) {
+                        ptr = memchunk1 + memchunk_offset1;
+                        // printf("memchunk_offset1: %lx\n", memchunk_offset1);
+                }
+                else {
+                        
+                        ptr = memchunk2 + memchunk_offset2;
+                        // printf("memchunk_offset2: %lx\n", memchunk_offset2);
+                }
 
                 switch (type) {
                 case CL_TYPE_PREFETCH_T0:
@@ -920,9 +934,18 @@ mem_execute(const unsigned bw, const enum cl_type type)
                         assert(0);
                         break;
                 }
-                memchunk_offset += CL_SIZE;
-                if (memchunk_offset >= memchunk_size)
-                        memchunk_offset = 0;
+
+                if (i % 100 >= miss_ratio) {
+                        memchunk_offset1 += CL_SIZE;
+                        if (memchunk_offset1 % (CL_SIZE * NUM_SETS) == 0)
+                                memchunk_offset1 += CL_SIZE;
+                        if (memchunk_offset1 >= memchunk_size1)
+                                memchunk_offset1 = CL_SIZE;
+                } else {
+                        memchunk_offset2 += CL_SIZE * NUM_SETS;
+                        if (memchunk_offset2 >= memchunk_size2)
+                                memchunk_offset2 = 0;
+                }
         }
         sb();
 }
@@ -1067,6 +1090,7 @@ main(int argc, char **argv)
             {"bandwidth",       required_argument, 0, 'b'},
             {"cpu",             required_argument, 0, 'c'},
             {"buffer-size",   required_argument, 0, 's'},
+            {"ratio",   required_argument, 0, 'r'},
             {"prefetch-t0",     no_argument, 0, CL_TYPE_PREFETCH_T0},
             {"prefetch-t1",     no_argument, 0, CL_TYPE_PREFETCH_T1},
             {"prefetch-t2",     no_argument, 0, CL_TYPE_PREFETCH_T2},
@@ -1120,10 +1144,16 @@ main(int argc, char **argv)
                         break;
                 case 's':
                         errno = 0;
-                        memchunk_size = strtoul(optarg, &str_end, 10);
+                        memchunk_size1 = strtoul(optarg, &str_end, 10);
                         if (errno != 0 || !(*optarg != '\0' && *str_end == '\0'))
                                 return -EINVAL;
-                        printf("memchunk_size=%lu\n", memchunk_size);
+                        printf("memchunk_size=%lu\n", memchunk_size1);
+                        break;
+                case 'r':
+                        errno = 0;
+                        miss_ratio = strtoul(optarg, &str_end, 10);
+                        if (errno != 0 || !(*optarg != '\0' && *str_end == '\0'))
+                                return -EINVAL;
                         break;
                 case CL_TYPE_PREFETCH_T0:
                 case CL_TYPE_PREFETCH_T1:
@@ -1216,11 +1246,17 @@ main(int argc, char **argv)
         set_thread_affinity(cpu);
 
         /* Allocate memory */
-        memchunk = malloc_and_init_memory(memchunk_size);
-        if (memchunk == NULL) {
+        memchunk1 = malloc_and_init_memory(memchunk_size1);
+        if (memchunk1 == NULL) {
                 printf("Failed to allocate memory!\n");
                 return EXIT_FAILURE;
         }
+        memchunk2 = malloc_and_init_memory(memchunk_size2);
+        if (memchunk2 == NULL) {
+                printf("Failed to allocate memory!\n");
+                return EXIT_FAILURE;
+        }
+        printf("miss_ratio=%lu\n", miss_ratio);
 
         printf("- THREAD logical core id: %u, "
                " memory bandwidth [MB]: %u, starting...\n",
@@ -1250,11 +1286,14 @@ main(int argc, char **argv)
                 if (usec_diff < interval) {
                         /* Sleep before executing operation again */
                         nano_sleep(interval, usec_diff);
+                } else {
+                        // printf("Operation took too long to execute! usec_diff=%ld\n", usec_diff);
                 }
         }
 
         /* Terminate thread */
-        free(memchunk);
+        munmap(memchunk1, memchunk_size1 - memchunk_size1 % PAGE_SIZE);
+        munmap(memchunk2, memchunk_size2 - memchunk_size2 % PAGE_SIZE);
         printf("\nexiting...\n");
 
         return 0;
